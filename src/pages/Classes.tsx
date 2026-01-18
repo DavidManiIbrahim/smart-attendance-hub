@@ -22,7 +22,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -53,41 +53,8 @@ export default function Classes() {
 
   const fetchClasses = async () => {
     try {
-      const { data: classesData, error } = await supabase
-        .from('classes')
-        .select('id, name, grade_level')
-        .order('grade_level');
-
-      if (error) throw error;
-
-      const classIds = classesData?.map(c => c.id) || [];
-
-      const [sectionsRes, studentsRes] = await Promise.all([
-        supabase.from('sections').select('id, name, class_id').in('class_id', classIds),
-        supabase.from('students').select('class_id').in('class_id', classIds).eq('is_active', true),
-      ]);
-
-      const sectionsMap = new Map<string, { id: string; name: string }[]>();
-      sectionsRes.data?.forEach(s => {
-        const existing = sectionsMap.get(s.class_id) || [];
-        existing.push({ id: s.id, name: s.name });
-        sectionsMap.set(s.class_id, existing);
-      });
-
-      const studentCountMap = new Map<string, number>();
-      studentsRes.data?.forEach(s => {
-        if (s.class_id) {
-          studentCountMap.set(s.class_id, (studentCountMap.get(s.class_id) || 0) + 1);
-        }
-      });
-
-      const classesWithData = classesData?.map(cls => ({
-        ...cls,
-        sections: sectionsMap.get(cls.id) || [],
-        studentCount: studentCountMap.get(cls.id) || 0,
-      })) || [];
-
-      setClasses(classesWithData);
+      const data = await api.get('/classes/full');
+      setClasses(data || []);
     } catch (error) {
       console.error('Error fetching classes:', error);
       toast({
@@ -112,30 +79,13 @@ export default function Classes() {
 
     setIsSubmitting(true);
     try {
-      // Create class
-      const { data: newClass, error: classError } = await supabase
-        .from('classes')
-        .insert({
-          name: newClassName.trim(),
-          grade_level: parseInt(newGradeLevel),
-        })
-        .select()
-        .single();
-
-      if (classError) throw classError;
-
-      // Create sections
       const sectionNames = newSections.split(',').map(s => s.trim()).filter(s => s);
-      if (sectionNames.length > 0) {
-        const { error: sectionsError } = await supabase
-          .from('sections')
-          .insert(sectionNames.map(name => ({
-            name,
-            class_id: newClass.id,
-          })));
 
-        if (sectionsError) throw sectionsError;
-      }
+      await api.post('/classes', {
+        name: newClassName.trim(),
+        gradeLevel: newGradeLevel,
+        sections: sectionNames,
+      });
 
       toast({
         title: 'Success',

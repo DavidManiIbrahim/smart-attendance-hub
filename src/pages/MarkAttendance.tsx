@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -72,24 +72,14 @@ export default function MarkAttendance() {
   const fetchClasses = async () => {
     try {
       if (role === 'admin') {
-        const { data } = await supabase.from('classes').select('id, name').order('grade_level');
+        const data = await api.get('/classes');
         setClasses(data || []);
       } else {
-        // For teachers, fetch only assigned classes
-        const { data: teacher } = await supabase
-          .from('teachers')
-          .select('id')
-          .eq('user_id', user!.id)
-          .maybeSingle();
-
+        const teacher = await api.get('/teachers/me');
         if (teacher) {
-          const { data: assignments } = await supabase
-            .from('teacher_assignments')
-            .select('class:classes(id, name)')
-            .eq('teacher_id', teacher.id);
-
+          const assignments = await api.get(`/teacher/assignments?teacherId=${teacher.id}`);
           const uniqueClasses = new Map<string, Class>();
-          assignments?.forEach(a => {
+          assignments?.forEach((a: any) => {
             if (a.class && !uniqueClasses.has(a.class.id)) {
               uniqueClasses.set(a.class.id, a.class);
             }
@@ -98,7 +88,7 @@ export default function MarkAttendance() {
         }
       }
 
-      const { data: sectionsData } = await supabase.from('sections').select('id, name, class_id');
+      const sectionsData = await api.get('/sections');
       setSections(sectionsData || []);
     } catch (error) {
       console.error('Error fetching classes:', error);
@@ -110,46 +100,23 @@ export default function MarkAttendance() {
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
 
-      // Fetch students
-      const { data: studentsData } = await supabase
-        .from('students')
-        .select('id, admission_number, roll_number, user_id')
-        .eq('class_id', selectedClass)
-        .eq('section_id', selectedSection)
-        .eq('is_active', true)
-        .order('roll_number');
+      const studentsData = await api.get(`/students?classId=${selectedClass}&sectionId=${selectedSection}`);
 
       if (!studentsData) {
         setStudents([]);
         return;
       }
 
-      // Fetch profiles
-      const userIds = studentsData.map(s => s.user_id);
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, full_name')
-        .in('user_id', userIds);
+      const existingAttendance = await api.get(`/attendance?date=${dateStr}`);
+      const attendanceMap = new Map(existingAttendance?.map((a: any) => [a.studentId, a]) || []);
 
-      const profilesMap = new Map(profiles?.map(p => [p.user_id, p]) || []);
-
-      // Fetch existing attendance
-      const studentIds = studentsData.map(s => s.id);
-      const { data: existingAttendance } = await supabase
-        .from('attendance')
-        .select('student_id, status, remarks')
-        .eq('date', dateStr)
-        .in('student_id', studentIds);
-
-      const attendanceMap = new Map(existingAttendance?.map(a => [a.student_id, a]) || []);
-
-      const studentsWithAttendance = studentsData.map(student => ({
+      const studentsWithAttendance = studentsData.map((student: any) => ({
         id: student.id,
-        admission_number: student.admission_number,
-        roll_number: student.roll_number,
-        profile: profilesMap.get(student.user_id) || null,
-        status: (attendanceMap.get(student.id)?.status as AttendanceStatus) || 'present',
-        remarks: attendanceMap.get(student.id)?.remarks || '',
+        admission_number: student.admissionNumber,
+        roll_number: student.rollNumber,
+        profile: { full_name: student.fullName },
+        status: (attendanceMap.get(student.id) as any)?.status || 'present',
+        remarks: (attendanceMap.get(student.id) as any)?.remarks || '',
       }));
 
       setStudents(studentsWithAttendance);
@@ -163,15 +130,8 @@ export default function MarkAttendance() {
   const checkLock = async () => {
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      const { data } = await supabase
-        .from('attendance_locks')
-        .select('id')
-        .eq('class_id', selectedClass)
-        .eq('section_id', selectedSection)
-        .eq('date', dateStr)
-        .maybeSingle();
-
-      setIsLocked(!!data);
+      const data = await api.get(`/attendance/check-lock?date=${dateStr}`);
+      setIsLocked(data.isLocked);
     } catch (error) {
       console.error('Error checking lock:', error);
     }
@@ -194,33 +154,18 @@ export default function MarkAttendance() {
   };
 
   const handleSave = async () => {
-    if (isLocked && role !== 'admin') {
-      toast({
-        variant: 'destructive',
-        title: 'Locked',
-        description: 'Attendance for this date is locked',
-      });
-      return;
-    }
-
     setSaving(true);
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      
-      // Upsert attendance records
-      const attendanceRecords = students.map(student => ({
-        student_id: student.id,
+
+      const records = students.map(student => ({
+        studentId: student.id,
         date: dateStr,
         status: student.status,
         remarks: student.remarks || null,
-        marked_by: user!.id,
       }));
 
-      const { error } = await supabase
-        .from('attendance')
-        .upsert(attendanceRecords, { onConflict: 'student_id,date' });
-
-      if (error) throw error;
+      await api.post('/attendance/upsert', { records });
 
       toast({
         title: 'Success',

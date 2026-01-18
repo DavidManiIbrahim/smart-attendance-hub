@@ -12,7 +12,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Search } from 'lucide-react';
 
@@ -43,49 +43,8 @@ export default function Teachers() {
 
   const fetchTeachers = async () => {
     try {
-      const { data: teachersData, error } = await supabase
-        .from('teachers')
-        .select(`
-          id,
-          employee_id,
-          department,
-          qualification,
-          joining_date,
-          user_id
-        `)
-        .order('employee_id');
-
-      if (error) throw error;
-
-      // Fetch profiles and assignments separately
-      const userIds = teachersData?.map(t => t.user_id) || [];
-      const teacherIds = teachersData?.map(t => t.id) || [];
-
-      const [profilesRes, assignmentsRes] = await Promise.all([
-        supabase.from('profiles').select('user_id, full_name, email, phone').in('user_id', userIds),
-        supabase.from('teacher_assignments').select(`
-          teacher_id,
-          is_class_teacher,
-          class:classes(name),
-          section:sections(name)
-        `).in('teacher_id', teacherIds),
-      ]);
-
-      const profilesMap = new Map(profilesRes.data?.map(p => [p.user_id, p]) || []);
-      const assignmentsMap = new Map<string, any[]>();
-      assignmentsRes.data?.forEach(a => {
-        const existing = assignmentsMap.get(a.teacher_id) || [];
-        existing.push(a);
-        assignmentsMap.set(a.teacher_id, existing);
-      });
-
-      const teachersWithData = teachersData?.map(teacher => ({
-        ...teacher,
-        profile: profilesMap.get(teacher.user_id) || null,
-        assignments: assignmentsMap.get(teacher.id) || [],
-      })) || [];
-
-      setTeachers(teachersWithData);
+      const data = await api.get('/teachers/detailed');
+      setTeachers(data || []);
     } catch (error) {
       console.error('Error fetching teachers:', error);
       toast({

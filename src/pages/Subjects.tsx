@@ -21,7 +21,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -49,12 +49,7 @@ export default function Subjects() {
 
   const fetchSubjects = async () => {
     try {
-      const { data, error } = await supabase
-        .from('subjects')
-        .select('id, name, code')
-        .order('name');
-
-      if (error) throw error;
+      const data = await api.get('/subjects');
       setSubjects(data || []);
     } catch (error) {
       console.error('Error fetching subjects:', error);
@@ -80,14 +75,10 @@ export default function Subjects() {
 
     setIsSubmitting(true);
     try {
-      const { error } = await supabase
-        .from('subjects')
-        .insert({
-          name: newSubjectName.trim(),
-          code: newSubjectCode.trim() || null,
-        });
-
-      if (error) throw error;
+      await api.post('/subjects', {
+        name: newSubjectName.trim(),
+        code: newSubjectCode.trim() || null,
+      });
 
       toast({
         title: 'Success',

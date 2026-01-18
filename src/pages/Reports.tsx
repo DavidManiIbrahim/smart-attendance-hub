@@ -21,7 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { CalendarIcon, Download, FileSpreadsheet } from 'lucide-react';
@@ -74,11 +74,11 @@ export default function Reports() {
 
   const fetchClasses = async () => {
     const [classesRes, sectionsRes] = await Promise.all([
-      supabase.from('classes').select('id, name').order('grade_level'),
-      supabase.from('sections').select('id, name, class_id'),
+      api.get('/classes'),
+      api.get('/sections'),
     ]);
-    setClasses(classesRes.data || []);
-    setSections(sectionsRes.data || []);
+    setClasses(classesRes || []);
+    setSections(sectionsRes || []);
   };
 
   const generateReport = async () => {
@@ -96,79 +96,18 @@ export default function Reports() {
       const fromDate = format(dateRange.from, 'yyyy-MM-dd');
       const toDate = format(dateRange.to, 'yyyy-MM-dd');
 
-      // Fetch students
-      const { data: students } = await supabase
-        .from('students')
-        .select('id, admission_number, roll_number, user_id')
-        .eq('class_id', selectedClass)
-        .eq('section_id', selectedSection)
-        .eq('is_active', true)
-        .order('roll_number');
+      const data = await api.get(`/reports/attendance?classId=${selectedClass}&sectionId=${selectedSection}&startDate=${fromDate}&endDate=${toDate}`);
 
-      if (!students || students.length === 0) {
-        setReport([]);
-        setSummaryStats({ avgAttendance: 0, belowThreshold: 0, totalStudents: 0 });
-        setLoading(false);
-        return;
-      }
+      setReport(data || []);
 
-      // Fetch profiles
-      const userIds = students.map(s => s.user_id);
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, full_name')
-        .in('user_id', userIds);
-
-      const profilesMap = new Map(profiles?.map(p => [p.user_id, p]) || []);
-
-      // Fetch attendance
-      const studentIds = students.map(s => s.id);
-      const { data: attendance } = await supabase
-        .from('attendance')
-        .select('student_id, status')
-        .in('student_id', studentIds)
-        .gte('date', fromDate)
-        .lte('date', toDate);
-
-      // Aggregate attendance by student
-      const attendanceMap = new Map<string, { present: number; absent: number; late: number }>();
-      attendance?.forEach(a => {
-        const existing = attendanceMap.get(a.student_id) || { present: 0, absent: 0, late: 0 };
-        if (a.status === 'present') existing.present++;
-        else if (a.status === 'absent') existing.absent++;
-        else if (a.status === 'late') existing.late++;
-        attendanceMap.set(a.student_id, existing);
-      });
-
-      const reportData: StudentReport[] = students.map(student => {
-        const stats = attendanceMap.get(student.id) || { present: 0, absent: 0, late: 0 };
-        const total = stats.present + stats.absent + stats.late;
-        const percentage = total > 0 ? Math.round(((stats.present + stats.late) / total) * 100) : 0;
-
-        return {
-          id: student.id,
-          name: profilesMap.get(student.user_id)?.full_name || 'N/A',
-          rollNumber: student.roll_number || 'N/A',
-          admissionNumber: student.admission_number,
-          present: stats.present,
-          absent: stats.absent,
-          late: stats.late,
-          total,
-          percentage,
-        };
-      });
-
-      setReport(reportData);
-
-      // Calculate summary
-      const totalPercentage = reportData.reduce((sum, r) => sum + r.percentage, 0);
-      const avgAttendance = reportData.length > 0 ? Math.round(totalPercentage / reportData.length) : 0;
-      const belowThreshold = reportData.filter(r => r.percentage < 75).length;
+      const totalPercentage = data?.reduce((sum: number, r: any) => sum + r.percentage, 0) || 0;
+      const avgAttendance = data?.length > 0 ? Math.round(totalPercentage / data.length) : 0;
+      const belowThreshold = data?.filter((r: any) => r.percentage < 75).length || 0;
 
       setSummaryStats({
         avgAttendance,
         belowThreshold,
-        totalStudents: reportData.length,
+        totalStudents: data?.length || 0,
       });
     } catch (error) {
       console.error('Error generating report:', error);

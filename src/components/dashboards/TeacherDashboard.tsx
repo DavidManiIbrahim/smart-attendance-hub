@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Users, ClipboardCheck, Clock, ArrowRight, BookOpen, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
@@ -29,70 +29,8 @@ export default function TeacherDashboard() {
 
   const fetchAssignedClasses = async () => {
     try {
-      const today = format(new Date(), 'yyyy-MM-dd');
-
-      const { data: teacher } = await supabase
-        .from('teachers')
-        .select('id')
-        .eq('user_id', user!.id)
-        .maybeSingle();
-
-      if (!teacher) {
-        setLoading(false);
-        return;
-      }
-
-      const { data: assignments } = await supabase
-        .from('teacher_assignments')
-        .select(`
-          id,
-          is_class_teacher,
-          class:classes(id, name),
-          section:sections(id, name)
-        `)
-        .eq('teacher_id', teacher.id);
-
-      if (!assignments) {
-        setLoading(false);
-        return;
-      }
-
-      const uniqueClasses = new Map<string, AssignedClass>();
-
-      for (const assignment of assignments) {
-        const key = `${assignment.class?.id}-${assignment.section?.id}`;
-        if (!uniqueClasses.has(key) && assignment.class && assignment.section) {
-          const { count: studentCount } = await supabase
-            .from('students')
-            .select('*', { count: 'exact', head: true })
-            .eq('class_id', assignment.class.id)
-            .eq('section_id', assignment.section.id)
-            .eq('is_active', true);
-
-          const { count: markedCount } = await supabase
-            .from('attendance')
-            .select('*', { count: 'exact', head: true })
-            .eq('date', today)
-            .in('student_id',
-              (await supabase
-                .from('students')
-                .select('id')
-                .eq('class_id', assignment.class.id)
-                .eq('section_id', assignment.section.id)
-              ).data?.map(s => s.id) || []
-            );
-
-          uniqueClasses.set(key, {
-            id: key,
-            className: assignment.class.name,
-            sectionName: assignment.section.name,
-            studentCount: studentCount || 0,
-            attendanceMarked: (markedCount || 0) > 0,
-          });
-        }
-      }
-
-      setAssignedClasses(Array.from(uniqueClasses.values()));
+      const data = await api.get('/teacher/dashboard-stats');
+      setAssignedClasses(data || []);
     } catch (error) {
       console.error('Error fetching assigned classes:', error);
     } finally {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { Users, UserCheck, GraduationCap, ClipboardCheck, AlertTriangle, TrendingUp, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -33,37 +33,22 @@ export default function AdminDashboard() {
 
   const fetchStats = async () => {
     try {
-      const today = format(new Date(), 'yyyy-MM-dd');
+      const data = await api.get('/stats/admin');
 
-      const [
-        { count: studentsCount },
-        { count: teachersCount },
-        { count: classesCount },
-        { data: attendanceData },
-      ] = await Promise.all([
-        supabase.from('students').select('*', { count: 'exact', head: true }).eq('is_active', true),
-        supabase.from('teachers').select('*', { count: 'exact', head: true }),
-        supabase.from('classes').select('*', { count: 'exact', head: true }),
-        supabase.from('attendance').select('status').eq('date', today),
-      ]);
-
-      const todayStats = attendanceData?.reduce(
-        (acc, record) => {
-          if (record.status === 'present') acc.present++;
-          else if (record.status === 'absent') acc.absent++;
-          else if (record.status === 'late') acc.late++;
-          return acc;
-        },
-        { present: 0, absent: 0, late: 0 }
-      ) || { present: 0, absent: 0, late: 0 };
+      const attendanceMap = { present: 0, absent: 0, late: 0 };
+      data.attendance?.forEach((item: { status: string; count: number }) => {
+        if (item.status in attendanceMap) {
+          attendanceMap[item.status as keyof typeof attendanceMap] = Number(item.count);
+        }
+      });
 
       setStats({
-        totalStudents: studentsCount || 0,
-        totalTeachers: teachersCount || 0,
-        totalClasses: classesCount || 0,
-        todayPresent: todayStats.present,
-        todayAbsent: todayStats.absent,
-        todayLate: todayStats.late,
+        totalStudents: Number(data.totalStudents) || 0,
+        totalTeachers: Number(data.totalTeachers) || 0,
+        totalClasses: Number(data.totalClasses) || 0,
+        todayPresent: attendanceMap.present,
+        todayAbsent: attendanceMap.absent,
+        todayLate: attendanceMap.late,
         lowAttendanceCount: 0,
       });
     } catch (error) {

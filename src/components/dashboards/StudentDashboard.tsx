@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { CalendarDays, CheckCircle, XCircle, Clock, Award, Target } from 'lucide-react';
-import { format, startOfMonth, endOfMonth } from 'date-fns';
+import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 interface AttendanceStats {
@@ -46,68 +46,17 @@ export default function StudentDashboard() {
 
   const fetchStudentData = async () => {
     try {
-      const { data: student } = await supabase
-        .from('students')
-        .select(`
-          id,
-          roll_number,
-          class:classes(name),
-          section:sections(name)
-        `)
-        .eq('user_id', user!.id)
-        .maybeSingle();
-
-      if (!student) {
-        setLoading(false);
-        return;
-      }
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('user_id', user!.id)
-        .maybeSingle();
+      const data = await api.get('/student/dashboard-stats');
 
       setStudentInfo({
-        name: profile?.full_name || 'Student',
-        className: student.class?.name || 'N/A',
-        section: student.section?.name || 'N/A',
-        rollNumber: student.roll_number || 'N/A',
+        name: data.studentInfo.fullName,
+        className: data.studentInfo.className || 'N/A',
+        section: data.studentInfo.sectionName || 'N/A',
+        rollNumber: data.studentInfo.rollNumber || 'N/A',
       });
 
-      const now = new Date();
-      const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
-      const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
-
-      const { data: attendance } = await supabase
-        .from('attendance')
-        .select('date, status')
-        .eq('student_id', student.id)
-        .gte('date', monthStart)
-        .lte('date', monthEnd)
-        .order('date', { ascending: false });
-
-      if (attendance) {
-        const present = attendance.filter(a => a.status === 'present').length;
-        const absent = attendance.filter(a => a.status === 'absent').length;
-        const late = attendance.filter(a => a.status === 'late').length;
-        const total = attendance.length;
-
-        setStats({
-          total,
-          present,
-          absent,
-          late,
-          percentage: total > 0 ? Math.round(((present + late) / total) * 100) : 0,
-        });
-
-        setRecentAttendance(
-          attendance.slice(0, 10).map(a => ({
-            date: a.date,
-            status: a.status as 'present' | 'absent' | 'late',
-          }))
-        );
-      }
+      setStats(data.stats);
+      setRecentAttendance(data.recentAttendance);
     } catch (error) {
       console.error('Error fetching student data:', error);
     } finally {

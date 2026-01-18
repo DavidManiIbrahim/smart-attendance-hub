@@ -10,9 +10,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { CheckCircle, XCircle, Clock, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -60,12 +60,8 @@ export default function MyAttendance() {
   const fetchAttendance = async () => {
     setLoading(true);
     try {
-      // Get student record
-      const { data: student } = await supabase
-        .from('students')
-        .select('id')
-        .eq('user_id', user!.id)
-        .maybeSingle();
+      const studentData = await api.get(`/students?userId=${user!.id}`);
+      const student = studentData[0];
 
       if (!student) {
         setLoading(false);
@@ -76,25 +72,18 @@ export default function MyAttendance() {
       const monthStart = format(startOfMonth(new Date(year, month - 1)), 'yyyy-MM-dd');
       const monthEnd = format(endOfMonth(new Date(year, month - 1)), 'yyyy-MM-dd');
 
-      const { data } = await supabase
-        .from('attendance')
-        .select('date, status, remarks')
-        .eq('student_id', student.id)
-        .gte('date', monthStart)
-        .lte('date', monthEnd)
-        .order('date');
+      const data = await api.get(`/attendance?studentId=${student.id}&startDate=${monthStart}&endDate=${monthEnd}`);
 
-      const attendanceData = (data || []).map(a => ({
+      const attendanceData = (data || []).map((a: any) => ({
         ...a,
         status: a.status as 'present' | 'absent' | 'late',
       }));
 
       setAttendance(attendanceData);
 
-      // Calculate stats
-      const present = attendanceData.filter(a => a.status === 'present').length;
-      const absent = attendanceData.filter(a => a.status === 'absent').length;
-      const late = attendanceData.filter(a => a.status === 'late').length;
+      const present = attendanceData.filter((a: any) => a.status === 'present').length;
+      const absent = attendanceData.filter((a: any) => a.status === 'absent').length;
+      const late = attendanceData.filter((a: any) => a.status === 'late').length;
       const total = attendanceData.length;
 
       setStats({
@@ -176,7 +165,7 @@ export default function MyAttendance() {
               <div className={cn(
                 "text-2xl font-bold",
                 stats.percentage >= 90 ? 'text-emerald-600' :
-                stats.percentage >= 75 ? 'text-yellow-600' : 'text-red-600'
+                  stats.percentage >= 75 ? 'text-yellow-600' : 'text-red-600'
               )}>
                 {stats.percentage}%
               </div>
@@ -230,17 +219,17 @@ export default function MyAttendance() {
                     {day}
                   </div>
                 ))}
-                
+
                 {/* Empty cells for days before month starts */}
                 {Array.from({ length: startOfMonth(monthDate).getDay() }).map((_, i) => (
                   <div key={`empty-${i}`} className="p-2" />
                 ))}
-                
+
                 {daysInMonth.map((day) => {
                   const dateStr = format(day, 'yyyy-MM-dd');
                   const record = attendanceMap.get(dateStr);
                   const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-                  
+
                   return (
                     <div
                       key={dateStr}

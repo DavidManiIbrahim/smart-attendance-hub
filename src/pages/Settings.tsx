@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Save, Loader2 } from 'lucide-react';
 
@@ -27,12 +27,7 @@ export default function Settings() {
 
   const fetchSettings = async () => {
     try {
-      const { data, error } = await supabase
-        .from('settings')
-        .select('*')
-        .order('key');
-
-      if (error) throw error;
+      const data = await api.get('/settings');
       setSettings(data || []);
     } catch (error) {
       console.error('Error fetching settings:', error);
@@ -55,14 +50,7 @@ export default function Settings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      for (const setting of settings) {
-        const { error } = await supabase
-          .from('settings')
-          .update({ value: setting.value })
-          .eq('id', setting.id);
-
-        if (error) throw error;
-      }
+      await api.post('/settings/bulk', { settings });
 
       toast({
         title: 'Success',
@@ -79,7 +67,6 @@ export default function Settings() {
       setSaving(false);
     }
   };
-
   const getSettingLabel = (key: string) => {
     const labels: Record<string, string> = {
       school_name: 'School Name',
@@ -169,12 +156,7 @@ function AcademicYearSettings() {
 
   const fetchAcademicYear = async () => {
     try {
-      const { data } = await supabase
-        .from('academic_years')
-        .select('*')
-        .eq('is_current', true)
-        .maybeSingle();
-
+      const data = await api.get('/academic-years/current');
       setAcademicYear(data);
     } catch (error) {
       console.error('Error fetching academic year:', error);

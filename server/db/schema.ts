@@ -105,3 +105,11 @@ export const attendance = pgTable('attendance', {
     markedAt: timestamp('marked_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+export const settings = pgTable('settings', {
+    id: uuid('id').primaryKey().defaultRandom(),
+    key: text('key').notNull().unique(),
+    value: text('value').notNull(),
+    description: text('description'),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});

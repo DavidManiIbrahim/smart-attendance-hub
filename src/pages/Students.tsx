@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Search, Eye } from 'lucide-react';
 
@@ -73,45 +73,15 @@ export default function Students() {
 
   const fetchData = async () => {
     try {
-      const [studentsRes, classesRes, sectionsRes] = await Promise.all([
-        supabase.from('students').select(`
-          id,
-          admission_number,
-          roll_number,
-          date_of_birth,
-          gender,
-          parent_name,
-          parent_phone,
-          is_active,
-          class:classes(id, name),
-          section:sections(id, name)
-        `).order('admission_number'),
-        supabase.from('classes').select('id, name').order('grade_level'),
-        supabase.from('sections').select('id, name, class_id').order('name'),
+      const [studentsData, classesData, sectionsData] = await Promise.all([
+        api.get('/students/detailed'),
+        api.get('/classes'),
+        api.get('/sections'),
       ]);
 
-      // Fetch profiles separately
-      const studentIds = studentsRes.data?.map(s => s.id) || [];
-      const { data: profilesData } = await supabase
-        .from('profiles')
-        .select('user_id, full_name, email');
-
-      // Get user_ids for students
-      const { data: studentUserIds } = await supabase
-        .from('students')
-        .select('id, user_id');
-
-      const userIdMap = new Map(studentUserIds?.map(s => [s.id, s.user_id]) || []);
-      const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
-
-      const studentsWithProfiles = studentsRes.data?.map(student => ({
-        ...student,
-        profile: profilesMap.get(userIdMap.get(student.id)) || null,
-      })) || [];
-
-      setStudents(studentsWithProfiles);
-      setClasses(classesRes.data || []);
-      setSections(sectionsRes.data || []);
+      setStudents(studentsData || []);
+      setClasses(classesData || []);
+      setSections(sectionsData || []);
     } catch (error) {
       console.error('Error fetching data:', error);
       toast({
@@ -129,15 +99,15 @@ export default function Students() {
       student.admission_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.profile?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.profile?.email?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesClass = filterClass === 'all' || student.class?.id === filterClass;
     const matchesSection = filterSection === 'all' || student.section?.id === filterSection;
 
     return matchesSearch && matchesClass && matchesSection;
   });
 
-  const filteredSections = filterClass === 'all' 
-    ? sections 
+  const filteredSections = filterClass === 'all'
+    ? sections
     : sections.filter(s => s.class_id === filterClass);
 
   return (
@@ -227,19 +197,18 @@ export default function Students() {
                         <TableCell>{student.roll_number || 'N/A'}</TableCell>
                         <TableCell>{student.parent_phone || 'N/A'}</TableCell>
                         <TableCell>
-                          <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                            student.is_active 
-                              ? 'bg-emerald-100 text-emerald-700' 
+                          <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${student.is_active
+                              ? 'bg-emerald-100 text-emerald-700'
                               : 'bg-red-100 text-red-700'
-                          }`}>
+                            }`}>
                             {student.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
                           <Dialog>
                             <DialogTrigger asChild>
-                              <Button 
-                                variant="ghost" 
+                              <Button
+                                variant="ghost"
                                 size="icon"
                                 onClick={() => setSelectedStudent(student)}
                               >
