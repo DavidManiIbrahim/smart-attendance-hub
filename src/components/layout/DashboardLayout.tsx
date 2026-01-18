@@ -90,7 +90,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
                 <GraduationCap className="h-5 w-5 text-primary-foreground" />
               </div>
-              <span className="hidden font-semibold sm:inline-block">Attendance MS</span>
+              <span className="hidden font-semibold sm:inline-block">Smart Attendance Hub</span>
             </Link>
           </div>
 
