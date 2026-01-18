@@ -183,6 +183,30 @@ app.post('/api/classes', authenticateToken, async (req, res) => {
     }
 });
 
+app.put('/api/classes/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const { name, gradeLevel } = req.body;
+    try {
+        const [updatedClass] = await db.update(classes).set({
+            name,
+            gradeLevel: parseInt(gradeLevel)
+        }).where(eq(classes.id, id)).returning();
+        res.json(updatedClass);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/classes/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    try {
+        await db.delete(classes).where(eq(classes.id, id));
+        res.json({ success: true });
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/subjects', authenticateToken, async (req, res) => {
     try {
         const data = await db.select().from(subjects).orderBy(subjects.name);
@@ -200,6 +224,30 @@ app.post('/api/subjects', authenticateToken, async (req, res) => {
             code: code || null
         }).returning();
         res.json(newSubject);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/subjects/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const { name, code } = req.body;
+    try {
+        const [updatedSubject] = await db.update(subjects).set({
+            name,
+            code: code || null
+        }).where(eq(subjects.id, id)).returning();
+        res.json(updatedSubject);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/subjects/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    try {
+        await db.delete(subjects).where(eq(subjects.id, id));
+        res.json({ success: true });
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }
@@ -355,7 +403,6 @@ app.get('/api/students', authenticateToken, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
 app.get('/api/students/detailed', authenticateToken, async (req, res) => {
     try {
         const data = await db.select({
@@ -393,10 +440,153 @@ app.get('/api/students/detailed', authenticateToken, async (req, res) => {
     }
 });
 
+app.post('/api/students', authenticateToken, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+    const { email, password, fullName, admissionNumber, rollNumber, classId, sectionId, gender, parentName, parentPhone } = req.body;
+    try {
+        const hashedPassword = await bcrypt.hash(password || 'password123', 10);
+        const [newUser] = await db.insert(users).values({
+            email,
+            password: hashedPassword,
+            fullName,
+            role: 'student'
+        }).returning();
+
+        const [newStudent] = await db.insert(students).values({
+            userId: newUser.id,
+            admissionNumber,
+            rollNumber,
+            classId: classId || null,
+            sectionId: sectionId || null,
+            gender,
+            parentName,
+            parentPhone,
+            isActive: true
+        }).returning();
+
+        res.json(newStudent);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/students/:id', authenticateToken, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+    const { id } = req.params;
+    const { fullName, email, admissionNumber, rollNumber, classId, sectionId, isActive, gender, parentName, parentPhone } = req.body;
+    try {
+        const [student] = await db.select().from(students).where(eq(students.id, id)).limit(1);
+        if (!student) return res.status(404).json({ error: 'Student not found' });
+
+        // Update User
+        await db.update(users).set({
+            fullName,
+            email
+        }).where(eq(users.id, student.userId));
+
+        // Update Student
+        const [updatedStudent] = await db.update(students).set({
+            admissionNumber,
+            rollNumber,
+            classId: classId || null,
+            sectionId: sectionId || null,
+            isActive,
+            gender,
+            parentName,
+            parentPhone,
+            updatedAt: new Date()
+        }).where(eq(students.id, id)).returning();
+
+        res.json(updatedStudent);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/students/:id', authenticateToken, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+    const { id } = req.params;
+    try {
+        const [student] = await db.select().from(students).where(eq(students.id, id)).limit(1);
+        if (student) {
+            await db.delete(users).where(eq(users.id, student.userId));
+        }
+        res.json({ success: true });
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/teachers/me', authenticateToken, async (req: any, res) => {
     try {
         const [teacher] = await db.select().from(teachers).where(eq(teachers.userId, req.user.id)).limit(1);
         res.json(teacher || null);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/teachers', authenticateToken, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+    const { email, password, fullName, employeeId, department, qualification, joiningDate } = req.body;
+    try {
+        const hashedPassword = await bcrypt.hash(password || 'password123', 10);
+        const [newUser] = await db.insert(users).values({
+            email,
+            password: hashedPassword,
+            fullName,
+            role: 'teacher'
+        }).returning();
+
+        const [newTeacher] = await db.insert(teachers).values({
+            userId: newUser.id,
+            employeeId,
+            department,
+            qualification,
+            joiningDate: joiningDate || null
+        }).returning();
+
+        res.json(newTeacher);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/teachers/:id', authenticateToken, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+    const { id } = req.params;
+    const { fullName, email, employeeId, department, qualification, joiningDate } = req.body;
+    try {
+        const [teacher] = await db.select().from(teachers).where(eq(teachers.id, id)).limit(1);
+        if (!teacher) return res.status(404).json({ error: 'Teacher not found' });
+
+        await db.update(users).set({
+            fullName,
+            email
+        }).where(eq(users.id, teacher.userId));
+
+        const [updatedTeacher] = await db.update(teachers).set({
+            employeeId,
+            department,
+            qualification,
+            joiningDate: joiningDate || null
+        }).where(eq(teachers.id, id)).returning();
+
+        res.json(updatedTeacher);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/teachers/:id', authenticateToken, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+    const { id } = req.params;
+    try {
+        const [teacher] = await db.select().from(teachers).where(eq(teachers.id, id)).limit(1);
+        if (teacher) {
+            await db.delete(users).where(eq(users.id, teacher.userId));
+        }
+        res.json({ success: true });
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }

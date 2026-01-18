@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Search } from 'lucide-react';
+import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Subject {
@@ -37,6 +37,8 @@ export default function Subjects() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [newSubjectName, setNewSubjectName] = useState('');
   const [newSubjectCode, setNewSubjectCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -101,6 +103,55 @@ export default function Subjects() {
     }
   };
 
+  const handleEditSubject = async () => {
+    if (!editingSubject || !editingSubject.name.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      await api.put(`/subjects/${editingSubject.id}`, {
+        name: editingSubject.name.trim(),
+        code: editingSubject.code?.trim() || null,
+      });
+
+      toast({
+        title: 'Success',
+        description: 'Subject updated successfully',
+      });
+
+      setIsEditDialogOpen(false);
+      fetchSubjects();
+    } catch (error) {
+      console.error('Error updating subject:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to update subject',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteSubject = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this subject?')) return;
+
+    try {
+      await api.delete(`/subjects/${id}`);
+      toast({
+        title: 'Success',
+        description: 'Subject deleted successfully',
+      });
+      fetchSubjects();
+    } catch (error) {
+      console.error('Error deleting subject:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to delete subject',
+      });
+    }
+  };
+
   const filteredSubjects = subjects.filter((subject) =>
     subject.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     subject.code?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -160,6 +211,42 @@ export default function Subjects() {
           )}
         </div>
 
+        {/* Edit Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Subject</DialogTitle>
+              <DialogDescription>Update subject details</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="editSubjectName">Subject Name</Label>
+                <Input
+                  id="editSubjectName"
+                  value={editingSubject?.name || ''}
+                  onChange={(e) => setEditingSubject(prev => prev ? { ...prev, name: e.target.value } : null)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editSubjectCode">Subject Code</Label>
+                <Input
+                  id="editSubjectCode"
+                  value={editingSubject?.code || ''}
+                  onChange={(e) => setEditingSubject(prev => prev ? { ...prev, code: e.target.value } : null)}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleEditSubject} disabled={isSubmitting}>
+                {isSubmitting ? 'Updating...' : 'Update Subject'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Card>
           <CardHeader>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -192,6 +279,7 @@ export default function Subjects() {
                     <TableRow>
                       <TableHead>Subject Name</TableHead>
                       <TableHead>Code</TableHead>
+                      {role === 'admin' && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -199,6 +287,30 @@ export default function Subjects() {
                       <TableRow key={subject.id}>
                         <TableCell className="font-medium">{subject.name}</TableCell>
                         <TableCell>{subject.code || 'N/A'}</TableCell>
+                        {role === 'admin' && (
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setEditingSubject(subject);
+                                  setIsEditDialogOpen(true);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => handleDeleteSubject(subject.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>

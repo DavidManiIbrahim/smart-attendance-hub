@@ -24,7 +24,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Search } from 'lucide-react';
+import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface ClassWithSections {
@@ -40,6 +40,8 @@ export default function Classes() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingClass, setEditingClass] = useState<ClassWithSections | null>(null);
   const [newClassName, setNewClassName] = useState('');
   const [newGradeLevel, setNewGradeLevel] = useState('');
   const [newSections, setNewSections] = useState('A, B');
@@ -106,6 +108,55 @@ export default function Classes() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleEditClass = async () => {
+    if (!editingClass || !editingClass.name.trim() || !editingClass.grade_level) return;
+
+    setIsSubmitting(true);
+    try {
+      await api.put(`/classes/${editingClass.id}`, {
+        name: editingClass.name.trim(),
+        gradeLevel: editingClass.grade_level,
+      });
+
+      toast({
+        title: 'Success',
+        description: 'Class updated successfully',
+      });
+
+      setIsEditDialogOpen(false);
+      fetchClasses();
+    } catch (error) {
+      console.error('Error updating class:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to update class',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteClass = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this class? All associated sections and students will be affected.')) return;
+
+    try {
+      await api.delete(`/classes/${id}`);
+      toast({
+        title: 'Success',
+        description: 'Class deleted successfully',
+      });
+      fetchClasses();
+    } catch (error) {
+      console.error('Error deleting class:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to delete class',
+      });
     }
   };
 
@@ -179,6 +230,45 @@ export default function Classes() {
           )}
         </div>
 
+        {/* Edit Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Class</DialogTitle>
+              <DialogDescription>Update class details</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="editClassName">Class Name</Label>
+                <Input
+                  id="editClassName"
+                  value={editingClass?.name || ''}
+                  onChange={(e) => setEditingClass(prev => prev ? { ...prev, name: e.target.value } : null)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editGradeLevel">Grade Level</Label>
+                <Input
+                  id="editGradeLevel"
+                  type="number"
+                  min="1"
+                  max="12"
+                  value={editingClass?.grade_level || ''}
+                  onChange={(e) => setEditingClass(prev => prev ? { ...prev, grade_level: parseInt(e.target.value) } : null)}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleEditClass} disabled={isSubmitting}>
+                {isSubmitting ? 'Updating...' : 'Update Class'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Card>
           <CardHeader>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -213,6 +303,7 @@ export default function Classes() {
                       <TableHead>Grade Level</TableHead>
                       <TableHead>Sections</TableHead>
                       <TableHead>Total Students</TableHead>
+                      {role === 'admin' && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -234,6 +325,30 @@ export default function Classes() {
                           </div>
                         </TableCell>
                         <TableCell>{cls.studentCount}</TableCell>
+                        {role === 'admin' && (
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setEditingClass(cls);
+                                  setIsEditDialogOpen(true);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => handleDeleteClass(cls.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
