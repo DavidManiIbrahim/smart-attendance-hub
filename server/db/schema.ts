@@ -16,6 +16,17 @@ export const users = pgTable('users', {
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+export const profiles = pgTable('profiles', {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
+    fullName: text('full_name').notNull(),
+    email: text('email').notNull(),
+    phone: text('phone'),
+    avatarUrl: text('avatar_url'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export const academicYears = pgTable('academic_years', {
     id: uuid('id').primaryKey().defaultRandom(),
     name: text('name').notNull(),
