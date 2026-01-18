@@ -10,7 +10,8 @@ import { eq, and, sql } from 'drizzle-orm';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+// Force 3001 if PORT looks like a database port (accidental leak)
+const PORT = (process.env.PORT && process.env.PORT !== '5432') ? process.env.PORT : 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key';
 
 app.use(cors());
@@ -146,6 +147,16 @@ app.get('/api/classes/full', authenticateToken, async (req, res) => {
         }));
 
         res.json(fullData);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/sections', authenticateToken, async (req, res) => {
+    try {
+        const { classId } = req.query;
+        const data = await db.select().from(sections).where(classId ? eq(sections.classId, classId as string) : sql`true`);
+        res.json(data);
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }
@@ -377,6 +388,53 @@ app.get('/api/students/detailed', authenticateToken, async (req, res) => {
         }));
 
         res.json(formatted);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/teachers/me', authenticateToken, async (req: any, res) => {
+    try {
+        const [teacher] = await db.select().from(teachers).where(eq(teachers.userId, req.user.id)).limit(1);
+        res.json(teacher || null);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/student/dashboard-stats', authenticateToken, async (req: any, res) => {
+    try {
+        const [student] = await db.select({
+            id: students.id,
+            fullName: users.fullName,
+            className: classes.name,
+            sectionName: sections.name,
+            rollNumber: students.rollNumber
+        })
+            .from(students)
+            .innerJoin(users, eq(students.userId, users.id))
+            .leftJoin(classes, eq(students.classId, classes.id))
+            .leftJoin(sections, eq(students.sectionId, sections.id))
+            .where(eq(students.userId, req.user.id))
+            .limit(1);
+
+        if (!student) return res.status(404).json({ error: 'Student not found' });
+
+        const records = await db.select().from(attendance).where(eq(attendance.studentId, student.id));
+
+        const stats = {
+            total: records.length,
+            present: records.filter(r => r.status === 'present').length,
+            absent: records.filter(r => r.status === 'absent').length,
+            late: records.filter(r => r.status === 'late').length,
+            percentage: records.length > 0 ? Math.round(((records.filter(r => r.status === 'present').length + records.filter(r => r.status === 'late').length) / records.length) * 100) : 0
+        };
+
+        res.json({
+            studentInfo: student,
+            stats,
+            recentAttendance: records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10)
+        });
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }
