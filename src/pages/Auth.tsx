@@ -132,8 +132,18 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-md">
+    <div
+      className="min-h-screen flex items-center justify-center bg-muted/30 p-4 relative"
+      style={{
+        backgroundImage: 'url(/szcze-hoo-CrY1FfQHYoQ-unsplash.jpg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat'
+      }}
+    >
+      {/* Overlay to ensure text readability if needed, though Card is solid */}
+      <div className="absolute inset-0 bg-black/40" />
+      <Card className="w-full max-w-md relative z-10">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary">
             <GraduationCap className="h-6 w-6 text-primary-foreground" />
